@@ -2,126 +2,124 @@ import os
 import logging
 import tempfile
 import time
+import traceback
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
-from config import Config
-from utils.api_clients import VideoAPIClients
-from utils.video_processor import VideoProcessor
-
-# Railway-specific setup
-if os.path.exists('.env'):
-    from dotenv import load_dotenv
-    load_dotenv()
-
-# Enhanced logging
+# Setup detailed logging
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,  # Ubah ke DEBUG untuk lebih detail
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[logging.StreamHandler()]
 )
 
-class GeminiVideoGeneratorBot:
+class DebugVideoBot:
     def __init__(self):
-        self.validate_environment()
-        
-        self.application = Application.builder().token(Config.TELEGRAM_TOKEN).build()
-        self.api_clients = VideoAPIClients()
+        self.token = os.getenv('TELEGRAM_TOKEN')
+        if not self.token:
+            raise ValueError("❌ TELEGRAM_TOKEN not set")
+            
+        self.application = Application.builder().token(self.token).build()
+        self.setup_handlers()
         self.user_sessions = {}
         
-        self.setup_handlers()
-        logging.info("🤖 Gemini Video Bot Initialized with Google AI Studio!")
-    
-    def validate_environment(self):
-        """Validate required environment variables"""
-        required_vars = ['TELEGRAM_TOKEN', 'GOOGLE_AI_API_KEY']
-        missing = [var for var in required_vars if not os.getenv(var)]
-        
-        if missing:
-            error_msg = f"❌ Missing environment variables: {', '.join(missing)}"
-            logging.error(error_msg)
-            print("💡 Please set in Railway:")
-            print("   - TELEGRAM_TOKEN (from @BotFather)")
-            print("   - GOOGLE_AI_API_KEY (from Google AI Studio)")
-            exit(1)
-        
-        logging.info("✅ All environment variables are set")
-        logging.info(f"🔑 Google AI API Key: {Config.GOOGLE_AI_API_KEY[:10]}...")
+        logging.info("✅ Debug Bot Initialized")
     
     def setup_handlers(self):
-        # Command handlers
         self.application.add_handler(CommandHandler("start", self.start_command))
-        self.application.add_handler(CommandHandler("help", self.help_command))
-        self.application.add_handler(CommandHandler("generate", self.generate_command))
-        self.application.add_handler(CommandHandler("style", self.style_command))
-        self.application.add_handler(CommandHandler("status", self.status_command))
-        self.application.add_handler(CommandHandler("gemini", self.gemini_info))
-        
-        # Message handlers
-        self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_text))
+        self.application.add_handler(CommandHandler("debug", self.debug_command))
+        self.application.add_handler(CommandHandler("test", self.test_command))
         self.application.add_handler(MessageHandler(filters.PHOTO, self.handle_image))
-        self.application.add_handler(MessageHandler(filters.Document.IMAGE, self.handle_document_image))
-    
-    async def gemini_info(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Show Gemini AI integration info"""
-        info_text = """
-🧠 **Google AI Studio (Gemini) Integration**
-
-**🤖 AI Model:** Gemini 1.5 Flash
-**🎯 Features:**
-• Enhanced prompt generation
-• Image analysis with Vision
-• Smart video suggestions
-• Fallback to Stability AI
-
-**🔧 How it works:**
-1. Upload gambar → Gemini menganalisa konten
-2. Kirim prompt → Gemini memperbaiki & enhance
-3. Generate video → dengan prompt yang lebih baik
-4. Hasil → Video lebih relevan dengan gambar
-
-**💡 Tips:**
-• Gambar jelas → Analisa lebih akurat
-• Prompt sederhana → Gemini akan enhance
-• Hasil → Lebih sesuai dengan konteks gambar
-
-**Status:** ✅ Active and Optimized
-        """
-        await update.message.reply_text(info_text, parse_mode='Markdown')
+        self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_text))
     
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        welcome_text = """
-🎬 **Video Generator Bot - Powered by Google AI Studio** 🧠
+        await update.message.reply_text(
+            "🐛 **Debug Bot Mode**\n\n"
+            "Mari test video generation step-by-step:\n"
+            "1. Upload gambar\n"
+            "2. Kirim prompt sederhana\n"
+            "3. Lihat debug info\n\n"
+            "Commands:\n"
+            "/debug - Status system\n"
+            "/test - Test API connection"
+        )
+    
+    async def debug_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Check system status"""
+        import psutil
+        
+        # Check API keys
+        google_key = os.getenv('GOOGLE_AI_API_KEY')
+        stability_key = os.getenv('STABILITY_API_KEY')
+        
+        debug_info = f"""
+🔍 **DEBUG INFORMATION**
 
-**🚀 Enhanced with Gemini AI:**
-• 🖼️ Smart image analysis
-• 📝 AI-powered prompt enhancement  
-• 🎬 Better video results
-• ⚡ Faster processing
+**API Keys:**
+• Google AI: {'✅ Set' if google_key else '❌ Missing'}
+• Stability AI: {'✅ Set' if stability_key else '❌ Missing'}
 
-**Cara Kerja:**
-1. Upload gambar → AI analisa konten
-2. Tulis prompt → AI optimize deskripsi
-3. Generate → Video lebih relevan
-4. Hasil → Kualitas enhanced
+**System:**
+• Memory: {psutil.virtual_memory().percent}%
+• Disk: {psutil.disk_usage('/').percent}%
+• Active Sessions: {len(self.user_sessions)}
 
-**Contoh Prompt:**
-"gerakan slow motion"
-"efek cinematic" 
-"awan bergerak pelan"
-
-**AI akan otomatis enhance prompt Anda!**
-
-**Commands:**
-/start - Info bot
-/gemini - Info AI integration
-/help - Bantuan lengkap
-/style - Style options
+**Environment:**
+• Python: {os.sys.version}
+• Platform: {os.sys.platform}
         """
-        await update.message.reply_text(welcome_text, parse_mode='Markdown')
-        logging.info(f"New user: {update.effective_user.username}")
+        await update.message.reply_text(debug_info)
+    
+    async def test_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Test API connections"""
+        try:
+            # Test Google AI Studio
+            import google.generativeai as genai
+            google_key = os.getenv('GOOGLE_AI_API_KEY')
+            
+            if google_key:
+                genai.configure(api_key=google_key)
+                model = genai.GenerativeModel('gemini-1.5-flash')
+                response = model.generate_content("Hello, test response")
+                google_status = "✅ Connected - " + response.text[:50] + "..."
+            else:
+                google_status = "❌ No API Key"
+            
+            # Test Stability AI
+            stability_key = os.getenv('STABILITY_API_KEY')
+            if stability_key:
+                import requests
+                headers = {"Authorization": f"Bearer {stability_key}"}
+                response = requests.get(
+                    "https://api.stability.ai/v1/user/account",
+                    headers=headers,
+                    timeout=10
+                )
+                if response.status_code == 200:
+                    stability_status = "✅ Connected"
+                else:
+                    stability_status = f"❌ API Error: {response.status_code}"
+            else:
+                stability_status = "❌ No API Key"
+            
+            test_results = f"""
+🧪 **API TEST RESULTS**
 
+Google AI Studio:
+{google_status}
+
+Stability AI:
+{stability_status}
+
+**Conclusion:** {'✅ Ready for video generation' if stability_key else '❌ Need Stability API key'}
+            """
+            await update.message.reply_text(test_results)
+            
+        except Exception as e:
+            await update.message.reply_text(f"❌ Test failed: {str(e)}")
+    
     async def handle_image(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle image upload dengan debug info"""
         user_id = update.effective_user.id
         
         try:
@@ -132,294 +130,278 @@ class GeminiVideoGeneratorBot:
                 await photo_file.download_to_drive(temp_file.name)
                 image_path = temp_file.name
             
-            # Validate image
-            if not VideoProcessor.validate_image(image_path):
-                await update.message.reply_text("❌ Gambar tidak valid atau terlalu besar (max 10MB)")
-                VideoProcessor.cleanup_files(image_path)
-                return
+            # Get file info
+            file_size = os.path.getsize(image_path)
             
-            # Optimize image
-            optimized_path = VideoProcessor.optimize_image(image_path)
-            
-            # Store in user session
             self.user_sessions[user_id] = {
-                'image_path': optimized_path,
+                'image_path': image_path,
                 'waiting_for_prompt': True
             }
             
             await update.message.reply_text(
-                "✅ **Gambar diterima!** 🖼️\n\n"
-                "🧠 **Gemini AI sedang menganalisa gambar...**\n"
-                "📝 Sekarang tulis prompt untuk video:\n\n"
-                "Contoh sederhana:\n"
-                "• \"slow motion\"\n" 
-                "• \"efek cinematic\"\n"
-                "• \"awan bergerak\"\n\n"
-                "AI akan enhance prompt Anda otomatis!",
-                parse_mode='Markdown'
+                f"🖼️ **Image Received**\n\n"
+                f"• Size: {file_size / 1024:.1f} KB\n"
+                f"• Ready for prompt\n\n"
+                f"Kirim prompt sederhana seperti: \"slow motion\""
             )
             
         except Exception as e:
-            logging.error(f"Image handling error: {e}")
-            await update.message.reply_text("❌ Error memproses gambar")
-    
-    async def handle_document_image(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        user_id = update.effective_user.id
-        
-        try:
-            document = update.message.document
-            
-            if document.mime_type not in Config.SUPPORTED_FORMATS:
-                await update.message.reply_text("❌ Format tidak didukung. Gunakan JPEG/PNG")
-                return
-            
-            if document.file_size > Config.MAX_FILE_SIZE:
-                await update.message.reply_text("❌ File terlalu besar (max 10MB)")
-                return
-            
-            file = await document.get_file()
-            
-            with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as temp_file:
-                await file.download_to_drive(temp_file.name)
-                image_path = temp_file.name
-            
-            if not VideoProcessor.validate_image(image_path):
-                await update.message.reply_text("❌ File gambar tidak valid")
-                VideoProcessor.cleanup_files(image_path)
-                return
-            
-            optimized_path = VideoProcessor.optimize_image(image_path)
-            
-            self.user_sessions[user_id] = {
-                'image_path': optimized_path,
-                'waiting_for_prompt': True
-            }
-            
-            await update.message.reply_text(
-                "✅ **Gambar document diterima!** 📁\n\n"
-                "🧠 AI siap menganalisa...\n"
-                "📝 Kirim prompt video sekarang..."
-            )
-            
-        except Exception as e:
-            logging.error(f"Document handling error: {e}")
-            await update.message.reply_text("❌ Error memproses file")
+            logging.error(f"Image error: {e}")
+            await update.message.reply_text(f"❌ Image error: {str(e)}")
     
     async def handle_text(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id = update.effective_user.id
         user_text = update.message.text
         
         if user_id in self.user_sessions and self.user_sessions[user_id].get('waiting_for_prompt'):
-            await self.process_image_prompt_video(update, user_id, user_text)
+            await self.try_video_generation(update, user_id, user_text)
         else:
-            await update.message.reply_text(
-                "📝 Untuk generate video dari text, gunakan:\n"
-                "`/generate your_prompt_here`\n\n"
-                "Atau upload gambar dulu untuk AI-enhanced video generation!",
-                parse_mode='Markdown'
-            )
+            await update.message.reply_text("Upload gambar dulu, lalu kirim prompt")
     
-    async def process_image_prompt_video(self, update: Update, user_id: int, prompt: str):
-        """Main video generation process with Gemini AI"""
+    async def try_video_generation(self, update: Update, user_id: int, prompt: str):
+        """Coba berbagai method video generation"""
         try:
-            processing_msg = await update.message.reply_text(
-                "🧠 **Memulai AI Video Generation...**\n"
-                "⏱️ Estimasi: 1-3 menit\n"
-                "📊 Status: Analisa gambar dengan Gemini AI..."
-            )
-            
             image_path = self.user_sessions[user_id]['image_path']
             
-            # Update status
-            await processing_msg.edit_text(
-                "🧠 **AI Video Generation Progress**\n"
-                "⏱️ Estimasi: 1-3 menit\n"
-                "📊 Status: Enhancing prompt & generating video..."
+            # Method 1: Stability AI (Paling reliable)
+            await update.message.reply_text("🔄 Method 1: Trying Stability AI...")
+            video_path = await self.try_stability_ai(image_path, prompt)
+            
+            if video_path:
+                await self.send_video_result(update, video_path, prompt, "Stability AI")
+                return
+            
+            # Method 2: Google AI + Fallback
+            await update.message.reply_text("🔄 Method 2: Trying Google AI Analysis...")
+            video_path = await self.try_google_ai_fallback(image_path, prompt)
+            
+            if video_path:
+                await self.send_video_result(update, video_path, prompt, "Google AI Enhanced")
+                return
+            
+            # Method 3: Simple conversion (fallback)
+            await update.message.reply_text("🔄 Method 3: Trying fallback method...")
+            video_path = await self.try_fallback_method(image_path, prompt)
+            
+            if video_path:
+                await self.send_video_result(update, video_path, prompt, "Fallback")
+                return
+            
+            # All methods failed
+            await update.message.reply_text(
+                "❌ **All generation methods failed**\n\n"
+                "Possible solutions:\n"
+                "1. Add Stability AI API key\n"
+                "2. Try different image\n"
+                "3. Use simpler prompt\n"
+                "4. Check API quota\n\n"
+                "Run /debug for system status"
             )
             
-            # Generate video using Gemini-enhanced method
-            video_path = await self.api_clients.generate_video_from_image_prompt(image_path, prompt)
-            
-            if video_path and os.path.exists(video_path):
-                file_size = os.path.getsize(video_path)
-                
-                if file_size < 50 * 1024 * 1024:  # Telegram limit
-                    await processing_msg.edit_text("✅ **Video Ready! Uploading...**")
-                    
-                    with open(video_path, 'rb') as video_file:
-                        await update.message.reply_video(
-                            video=video_file,
-                            caption=f"🎬 **AI-Generated Video** 🧠\n\n📝 **Original Prompt:** {prompt}",
-                            parse_mode='Markdown'
-                        )
-                    
-                    await processing_msg.delete()
-                else:
-                    await update.message.reply_text("❌ Video terlalu besar untuk dikirim Telegram")
-                
-                # Cleanup
-                VideoProcessor.cleanup_files(image_path, video_path)
-                
-            else:
-                await update.message.reply_text(
-                    "❌ **Gagal generate video**\n\n"
-                    "Kemungkinan sebab:\n"
-                    "• API limit tercapai\n• Gambar tidak suitable\n"
-                    "• Network timeout\n\n"
-                    "Coba lagi dengan gambar berbeda atau prompt lebih sederhana."
-                )
-            
-            # Clean user session
-            if user_id in self.user_sessions:
-                del self.user_sessions[user_id]
-                
         except Exception as e:
-            logging.error(f"Video generation error: {e}")
-            await update.message.reply_text("❌ Error selama proses AI video generation")
-            
-            # Cleanup on error
+            logging.error(f"Generation error: {traceback.format_exc()}")
+            await update.message.reply_text(f"❌ Error: {str(e)}")
+        
+        finally:
+            # Cleanup
             if user_id in self.user_sessions:
                 image_path = self.user_sessions[user_id].get('image_path')
-                VideoProcessor.cleanup_files(image_path)
+                if image_path and os.path.exists(image_path):
+                    os.unlink(image_path)
                 del self.user_sessions[user_id]
     
-    async def generate_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Text to video command"""
-        if not context.args:
-            await update.message.reply_text(
-                "📝 **Text to Video (Gemini Enhanced)**\n\n"
-                "Usage: `/generate your_video_description`\n\n"
-                "Contoh: `/generate cinematic scene with flying birds`\n\n"
-                "Note: Fitur text-to-video direct masih dalam development.\n"
-                "Untuk sekarang gunakan image+prompt untuk hasil terbaik!",
-                parse_mode='Markdown'
-            )
-            return
+    async def try_stability_ai(self, image_path: str, prompt: str) -> str:
+        """Try Stability AI video generation"""
+        try:
+            stability_key = os.getenv('STABILITY_API_KEY')
+            if not stability_key:
+                logging.warning("No Stability API key")
+                return None
+            
+            import aiohttp
+            headers = {"Authorization": f"Bearer {stability_key}"}
+            
+            async with aiohttp.ClientSession() as session:
+                with open(image_path, 'rb') as img_file:
+                    form_data = aiohttp.FormData()
+                    form_data.add_field('image', img_file)
+                    form_data.add_field('seed', '0')
+                    form_data.add_field('cfg_scale', '1.8')
+                    form_data.add_field('motion_bucket_id', '127')
+                    form_data.add_field('prompt', prompt)
+                
+                async with session.post(
+                    "https://api.stability.ai/v2beta/image-to-video",
+                    headers=headers,
+                    data=form_data,
+                    timeout=60
+                ) as response:
+                    
+                    if response.status == 200:
+                        data = await response.json()
+                        generation_id = data.get('id')
+                        logging.info(f"Stability generation started: {generation_id}")
+                        
+                        # Poll for result
+                        return await self.poll_stability_result(session, generation_id)
+                    else:
+                        error_text = await response.text()
+                        logging.error(f"Stability API error: {response.status} - {error_text}")
+                        return None
+                        
+        except Exception as e:
+            logging.error(f"Stability AI error: {e}")
+            return None
+    
+    async def poll_stability_result(self, session, generation_id: str, max_attempts: int = 20):
+        """Poll Stability AI for result"""
+        headers = {"Authorization": f"Bearer {os.getenv('STABILITY_API_KEY')}"}
         
-        prompt = ' '.join(context.args)
-        await update.message.reply_text(
-            f"🔮 **Text to Video - Coming Soon**\n\n"
-            f"Prompt: {prompt}\n\n"
-            "Fitur text-to-video direct sedang dikembangkan.\n"
-            "Untuk hasil terbaik, gunakan:\n"
-            "1. Upload gambar\n2. Kirim prompt text\n"
-            "3. Dapatkan AI-enhanced video!"
-        )
+        for attempt in range(max_attempts):
+            await asyncio.sleep(5)
+            logging.info(f"Polling attempt {attempt + 1}/{max_attempts}")
+            
+            try:
+                async with session.get(
+                    f"https://api.stability.ai/v2beta/image-to-video/result/{generation_id}",
+                    headers=headers
+                ) as response:
+                    
+                    if response.status == 200:
+                        video_data = await response.read()
+                        if len(video_data) > 1000:  # Minimum video size
+                            temp_file = tempfile.NamedTemporaryFile(suffix='.mp4', delete=False)
+                            temp_file.write(video_data)
+                            temp_file.close()
+                            logging.info("✅ Video generated successfully")
+                            return temp_file.name
+                    
+                    elif response.status == 202:
+                        continue  # Still processing
+                    else:
+                        break
+                        
+            except Exception as e:
+                logging.error(f"Polling error: {e}")
+                continue
+        
+        logging.error("Polling timeout")
+        return None
     
-    async def style_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        styles = """
-🎨 **AI Video Style Guide** 🧠
-
-**Gemini AI akan automatically enhance style Anda!**
-
-**🎭 Basic Motion Types:**
-• `slow motion` - Gerakan lambat
-• `cinematic` - Efek film 
-• `animated` - Style kartun
-• `realistic` - Gerakan realistik
-
-**💫 Simple Effects:**
-• `particles` - Efek partikel
-• `light` - Cahaya & sinar
-• `water` - Aliran air
-• `clouds` - Awan bergerak
-
-**Contoh Prompt Sederhana:**
-"slow motion dengan awan"
-"cinematic effect"  
-"animated particles"
-"realistic water flow"
-
-**AI akan:** 
-• Analisa gambar Anda
-• Enhance prompt sederhana
-• Hasilkan video lebih baik!
-        """
-        await update.message.reply_text(styles, parse_mode='Markdown')
+    async def try_google_ai_fallback(self, image_path: str, prompt: str) -> str:
+        """Try Google AI with fallback to simple video"""
+        try:
+            # Use Google AI to enhance prompt
+            import google.generativeai as genai
+            genai.configure(api_key=os.getenv('GOOGLE_AI_API_KEY'))
+            
+            from PIL import Image
+            img = Image.open(image_path)
+            
+            enhanced_prompt = f"""
+            Enhance this video prompt: "{prompt}"
+            for the uploaded image. Make it more descriptive for video generation.
+            """
+            
+            model = genai.GenerativeModel('gemini-1.5-flash')
+            response = model.generate_content([enhanced_prompt, img])
+            enhanced = response.text.strip()
+            
+            logging.info(f"Google AI enhanced prompt: {enhanced}")
+            
+            # Try Stability AI with enhanced prompt
+            return await self.try_stability_ai(image_path, enhanced)
+            
+        except Exception as e:
+            logging.error(f"Google AI fallback error: {e}")
+            return None
     
-    async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        help_text = """
-📖 **Bantuan - Gemini AI Video Generator**
-
-**Cara Kerja:**
-1. **Upload gambar** → AI analisa konten
-2. **Tulis prompt** → AI enhance otomatis  
-3. **Generate** → Video lebih relevan
-4. **Hasil** → Kualitas enhanced
-
-**Keunggulan Gemini AI:**
-• Prompt sederhana → Hasil bagus
-• Analisa gambar otomatis
-• Enhance deskripsi video
-• Hasil lebih sesuai konteks
-
-**Format Gambar:**
-• JPEG, PNG (max 10MB)
-• Gambar jelas & kontras baik
-
-**Tips Prompt:**
-• Gunakan bahasa sederhana
-• Deskripsi gerakan pendek
-• AI akan handle detailnya
-
-**Support:**
-Bot powered by Google AI Studio 🧠
-        """
-        await update.message.reply_text(help_text)
+    async def try_fallback_method(self, image_path: str, prompt: str) -> str:
+        """Simple fallback - create slideshow video"""
+        try:
+            from PIL import Image, ImageDraw
+            import subprocess
+            import os
+            
+            # Create simple slideshow from image
+            img = Image.open(image_path)
+            
+            # Create output directory
+            os.makedirs('temp_frames', exist_ok=True)
+            
+            # Create multiple frames for video
+            frames = []
+            for i in range(10):
+                frame = img.copy()
+                draw = ImageDraw.Draw(frame)
+                draw.text((10, 10), f"Frame {i+1}", fill='white')
+                frame_path = f'temp_frames/frame_{i:03d}.jpg'
+                frame.save(frame_path)
+                frames.append(frame_path)
+            
+            # Create video using ffmpeg
+            video_path = tempfile.NamedTemporaryFile(suffix='.mp4', delete=False).name
+            
+            # Try to use ffmpeg if available
+            try:
+                subprocess.run([
+                    'ffmpeg', '-y', '-framerate', '5', '-i', 'temp_frames/frame_%03d.jpg',
+                    '-c:v', 'libx264', '-pix_fmt', 'yuv420p', video_path
+                ], check=True, timeout=30)
+                
+                # Cleanup frames
+                for frame in frames:
+                    if os.path.exists(frame):
+                        os.unlink(frame)
+                if os.path.exists('temp_frames'):
+                    os.rmdir('temp_frames')
+                
+                return video_path
+                
+            except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError):
+                # ffmpeg not available
+                return None
+                
+        except Exception as e:
+            logging.error(f"Fallback method error: {e}")
+            return None
     
-    async def status_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        status_text = """
-🤖 **Bot Status - Google AI Studio**
-
-**🧠 AI Services:**
-• Gemini AI: ✅ Active
-• Vision Analysis: ✅ Enabled
-• Prompt Enhancement: ✅ Working
-• Video Generation: ✅ Operational
-
-**📊 System:**
-• Platform: Railway 🚂
-• Users Active: {len(self.user_sessions)}
-• Uptime: {self.get_uptime()}
-
-**🔧 Technical:**
-• Gemini Model: 1.5 Flash
-• Fallback API: Stability AI
-• Max Size: 10MB images
-• Timeout: 3 minutes
-
-**Status:** ✅ All Systems Go!
-        """.format(len(self.user_sessions), self.get_uptime())
-        await update.message.reply_text(status_text)
-    
-    def get_uptime(self):
-        if hasattr(self, 'start_time'):
-            uptime = time.time() - self.start_time
-            hours = int(uptime // 3600)
-            minutes = int((uptime % 3600) // 60)
-            return f"{hours}h {minutes}m"
-        return "Unknown"
+    async def send_video_result(self, update: Update, video_path: str, prompt: str, method: str):
+        """Send video result to user"""
+        try:
+            file_size = os.path.getsize(video_path)
+            
+            if file_size < 50 * 1024 * 1024:  # Telegram limit
+                with open(video_path, 'rb') as video_file:
+                    await update.message.reply_video(
+                        video=video_file,
+                        caption=f"🎬 **Success!** ({method})\nPrompt: {prompt}",
+                        parse_mode='Markdown'
+                    )
+                logging.info("✅ Video sent successfully")
+            else:
+                await update.message.reply_text("❌ Video too large for Telegram")
+            
+            # Cleanup
+            os.unlink(video_path)
+            
+        except Exception as e:
+            logging.error(f"Send video error: {e}")
+            await update.message.reply_text(f"❌ Error sending video: {str(e)}")
     
     def run(self):
-        """Start the bot"""
-        self.start_time = time.time()
-        
-        logging.info("🚀 Starting Gemini Video Generator Bot...")
-        print("🎬 Video Generator Bot - Powered by Google AI Studio")
-        print("🧠 Gemini AI Integration: ACTIVE")
-        print("🚂 Deployed on Railway")
-        print("📱 Bot is running...")
-        print("📍 Send /start to begin!")
-        
-        try:
-            self.application.run_polling(
-                allowed_updates=Update.ALL_TYPES,
-                drop_pending_updates=True
-            )
-        except Exception as e:
-            logging.error(f"Bot runtime error: {e}")
-            print(f"❌ Error: {e}")
+        print("🐛 Starting Debug Bot...")
+        self.application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
-    bot = GeminiVideoGeneratorBot()
+    # Check environment
+    required = ['TELEGRAM_TOKEN', 'GOOGLE_AI_API_KEY']
+    missing = [var for var in required if not os.getenv(var)]
+    
+    if missing:
+        print(f"❌ Missing: {', '.join(missing)}")
+        print("💡 Set in Railway environment variables")
+        exit(1)
+    
+    bot = DebugVideoBot()
     bot.run()
