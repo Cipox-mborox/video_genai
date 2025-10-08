@@ -1,0 +1,14 @@
+[phases.setup]
+cmds = ["apt-get update", "apt-get install -y ffmpeg"]
+
+[phases.install]
+cmds = ["pip install -r requirements.txt"]
+
+[phases.build]
+cmds = ["echo 'Building Video Generator Bot...'"]
+
+[start]
+cmd = "python bot.py"
+
+[watch]
+paths = ["bot.py", "utils", "config.py"]
